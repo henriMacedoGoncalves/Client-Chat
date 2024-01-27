@@ -25,12 +25,8 @@
 #define PORT(p) htons(p)
 
 
-#define START "/HELO"
-#define STOP "/QUIT"
-#ifdef BIN
-#define STARTBIN "1"
-#define STOPBIN "0"
-#endif
+#define START "1"
+#define STOP "0"
 #define SIZE 1024
 #ifdef USR
 #define N 4
@@ -38,54 +34,6 @@
 #else
 #define N 2
 #endif
-
-/*  Mauvaise interprétation de la partie 3.1
-
-#ifdef BIN
-
-// Transforme une chaine de caractères de lettres en une chaine de caractères de 0 et 1
-// string: message à transformer
-// binary: message en binaire sera stocké dans ce paramètre
-// return: void 
-
-void stringToBinary(char* string, char* binary)
-{
-    char c;
-    size_t i;
-    size_t length = strlen(string);
-    binary[0] = '\0';
-    for(i = 0; i < length; ++i) {
-        c = string[i];
-        for(int j = 7; j >= 0; --j){
-            if(c & (1 << j)) {
-                strcat(binary,"1");
-            } else {
-                strcat(binary,"0");
-            }
-        }
-    }
-}
-
-
-// Transforme une chaine de caractères de 0 et 1 en une chaine de caractères de lettres
-// binary: message à transformer
-// string: message sera stocké dans ce paramètre
-// return: void
-
-void binaryToString(char* binary, char* string)
-{
-    char c[8];
-    size_t len = strlen(binary);
-    size_t i;
-    for (i = 0; i < len/8; i++)
-    {
-        strncpy(c,&binary[i*8],8);
-        string[i] = strtol(c,0,2);
-    }
-    string[i] = '\0';
-}
-#endif
-*/
 
 #ifdef FILEIO
 
@@ -230,11 +178,6 @@ int main (int argc, char *argv [])
     struct sockaddr_in6 *in6;
 
     ssize_t nlus;
-/*/
-#ifdef BIN
-    size_t length;
-#endif
-*/
     socklen_t addrlen = sizeof(ss);
     char host[SIZE], port[SIZE];
     char msg[SIZE] = "";
@@ -281,13 +224,6 @@ int main (int argc, char *argv [])
     bind(sockfd, (struct sockaddr *) &ss, addrlen);
     if(errno == EADDRINUSE)
     {
-#ifdef BIN
-        /*
-        char binary[strlen(START)*8+1];
-        stringToBinary(START,binary);
-        */
-        CHECK(sendto(sockfd, STARTBIN, sizeof(STARTBIN), 0, (struct sockaddr*) &ss, addrlen));
-#else
         CHECK(sendto(sockfd, START, sizeof(START), 0, (struct sockaddr *) &ss, addrlen));
 #ifdef USR
         CHECK(nlus = recvfrom(sockfd, msg, SIZE, 0, (struct sockaddr *) &ss, &addrlen));
@@ -297,7 +233,6 @@ int main (int argc, char *argv [])
             CHECK(close(sockfd));
             exit(EXIT_FAILURE);
         }
-#endif
 #endif
     }
     else if (errno != 0)
@@ -315,14 +250,6 @@ int main (int argc, char *argv [])
             #ifdef USR
             cs[nUsers-1] = ss;
             #endif
-#ifdef BIN
-            if(strcmp(msg,STARTBIN) != 0)
-            {
-                fprintf(stderr,"erreur de connection\n");
-                CHECK(close(sockfd));
-                exit(EXIT_FAILURE);
-            }
-#else
             if(strcmp(msg,START) != 0)
             {
                 fprintf(stderr,"erreur de connection\n");
@@ -331,7 +258,6 @@ int main (int argc, char *argv [])
             }
             else
                 nUsers++;
-#endif
             rValue = getnameinfo((struct sockaddr *) &ss, addrlen, host, SIZE, port, SIZE, NI_NUMERICHOST);
             if(rValue != 0)
             {
@@ -368,19 +294,7 @@ int main (int argc, char *argv [])
         {
             CHECK(nlus = read(STDIN_FILENO, msg, SIZE));
             msg[strcspn(msg,"\n")] = '\0';
-#ifdef BIN
-            /*
-            length = (strlen(msg)*8) +1;
-            char binary[length];
-            stringToBinary(msg,binary);
-            */
-            if(strcmp(msg,STOP) == 0)
-            {
-                CHECK(sendto(sockfd,STOPBIN,nlus,0, (struct sockaddr *) &ss, addrlen));
-                break;
-            }
-            CHECK(sendto(sockfd,msg,nlus,0, (struct sockaddr *) &ss, addrlen));
-#elif FILEIO
+#if FILEIO
             if(isTXT(msg))
                 sendFile(msg,sockfd,ss);
             else
@@ -407,16 +321,7 @@ int main (int argc, char *argv [])
         {
             CHECK(nlus = recvfrom(sockfd,msg,SIZE,0,(struct sockaddr *) &ss, &addrlen));
             msg[nlus] = '\0';
-#ifdef BIN
-            /*
-            length = (strlen(msg)-1)/8;
-            char string[length];
-            binaryToString(msg,string);
-            */
-            if(strcmp(msg,STOPBIN) == 0)
-                break;
-            printf("%s\n", msg);
-#elif FILEIO
+#if FILEIO
             if(isTXT(msg))
                 receiveFile(msg,sockfd,ss);
             else

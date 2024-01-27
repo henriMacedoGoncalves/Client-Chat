@@ -5,12 +5,6 @@ env = Environment (CCFLAGS = CFLAGS)
 obj = env.Object(source=sources)
 env.Program (target="client-chat", source = obj)
 
-CFLAGSBIN = CFLAGS + ["-DBIN"]
-
-env_bin = Environment (CCFLAGS = CFLAGSBIN)
-obj_bin = env_bin.Object(target="client-chat-bin.o",source = sources)
-env_bin.Program (target="client-chat-bin",source= obj_bin)
-
 CFLAGSFILEIO = CFLAGS + ["-DFILEIO"]
 
 env_fileio = Environment (CCFLAGS = CFLAGSFILEIO)
