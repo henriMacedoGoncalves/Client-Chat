@@ -1,10 +1,3 @@
-/*
-    client-chat : execution basique
-    client-chat-bin : execution avec protocole en mode binaire
-    client-chat-fileio : execution avec transfert de fichier
-    client-chat-usr : execution avec gestion avancée des utilisateurs
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -14,50 +7,19 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#ifdef FILEIO
 #include <sys/stat.h>
 #include <fcntl.h>
-#endif
 
 #define CHECK(op)   do { if ( (op) == -1) { perror (#op); exit (EXIT_FAILURE); } \
                     } while (0)
 
 #define PORT(p) htons(p)
 
-
+#define ERROR "-1"
+#define FILEIO "2"
 #define START "1"
 #define STOP "0"
 #define SIZE 1024
-#ifdef USR
-#define N 4
-#define GROUPSTART "/GROUP"
-#else
-#define N 2
-#endif
-
-#ifdef FILEIO
-
-// vérifie si la chaine de caractères est un fichier de type TXT ou non
-// string: message à vérifier
-// return:  - 1 s'il s'agit d'un fichier
-//          - 0 sinon
-
-int isTXT(char* string)
-{
-    size_t length = strlen(string);
-    char *fileEnd = ".txt";
-    size_t endLength = strlen(fileEnd);
-
-    if(length < endLength)
-        return 0;
-
-    char *tmp = string + length - endLength;
-
-    if(strcmp(tmp, fileEnd) == 0)
-        return 1;
-
-    return 0;
-}
 
 // envoies le fichier à l'utilisateur
 // msg: fichier à envoyer
@@ -84,16 +46,19 @@ void sendFile(char *msg, int sockfd, struct sockaddr_storage ss)
     if(fd == -1 && errno == ENOENT)
     {
         printf("This file doesn't exist.\n");
+        CHECK(sendto(sockfd, ERROR, sizeof(ERROR), 0, (struct sockaddr *) &ss, addrlen));
         return;
     }
     else if(fd == -1 && errno == EACCES)
     {
         printf("Access to the file is not allowed.\n");
+        CHECK(sendto(sockfd, ERROR, sizeof(ERROR), 0, (struct sockaddr *) &ss, addrlen));
         return;
     }
     else if(fd == -1)
     {
         printf("An error occured.\n");
+        CHECK(sendto(sockfd, ERROR, sizeof(ERROR), 0, (struct sockaddr *) &ss, addrlen));
         return;
     }
 
@@ -163,18 +128,11 @@ void receiveFile(char *msg, int sockfd, struct sockaddr_storage ss)
     printf("You received the file \"%s\".\n",title);
 }
 
-#endif
-
 int main (int argc, char *argv [])
 {
 
     int port_number, sockfd;
     struct sockaddr_storage ss;
-    #ifdef USR
-    struct sockaddr_storage cs[N-1];
-    struct sockaddr_storage empty;
-    memset(&empty, 0, sizeof(struct sockaddr_storage));
-    #endif
     struct sockaddr_in6 *in6;
 
     ssize_t nlus;
@@ -225,15 +183,6 @@ int main (int argc, char *argv [])
     if(errno == EADDRINUSE)
     {
         CHECK(sendto(sockfd, START, sizeof(START), 0, (struct sockaddr *) &ss, addrlen));
-#ifdef USR
-        CHECK(nlus = recvfrom(sockfd, msg, SIZE, 0, (struct sockaddr *) &ss, &addrlen));
-        if(strcmp(msg,GROUPSTART) != 0)
-        {
-            fprintf(stderr,"erreur de connection\n");
-            CHECK(close(sockfd));
-            exit(EXIT_FAILURE);
-        }
-#endif
     }
     else if (errno != 0)
     {
@@ -243,37 +192,23 @@ int main (int argc, char *argv [])
     }
     else
     {
-        int nUsers = 1;
-        while (nUsers < N)
-        {        
-            CHECK(nlus = recvfrom(sockfd, msg, SIZE, 0, (struct sockaddr *) &ss, &addrlen));
-            #ifdef USR
-            cs[nUsers-1] = ss;
-            #endif
-            if(strcmp(msg,START) != 0)
-            {
-                fprintf(stderr,"erreur de connection\n");
-                CHECK(close(sockfd));
-                exit(EXIT_FAILURE);
-            }
-            else
-                nUsers++;
-            rValue = getnameinfo((struct sockaddr *) &ss, addrlen, host, SIZE, port, SIZE, NI_NUMERICHOST);
-            if(rValue != 0)
-            {
-                fprintf(stderr, "erreur de reception: %s\n", gai_strerror(rValue));
-                CHECK(close(sockfd));
-                exit(EXIT_FAILURE);
-            }
-            else
-                printf("%s %s\n", host, port);   
-        }
-        #ifdef USR
-        for (size_t i = 0; i < N-1; i++)
+
+        CHECK(nlus = recvfrom(sockfd, msg, SIZE, 0, (struct sockaddr *) &ss, &addrlen));
+        if(strcmp(msg,START) != 0)
         {
-            CHECK(sendto(sockfd,GROUPSTART,sizeof(GROUPSTART),0,(struct sockaddr *) &cs[i],sizeof(cs[i])));
+            fprintf(stderr,"erreur de connection\n");
+            CHECK(close(sockfd));
+            exit(EXIT_FAILURE);
         }
-        #endif
+        rValue = getnameinfo((struct sockaddr *) &ss, addrlen, host, SIZE, port, SIZE, NI_NUMERICHOST);
+        if(rValue != 0)
+        {
+            fprintf(stderr, "erreur de reception: %s\n", gai_strerror(rValue));
+            CHECK(close(sockfd));
+            exit(EXIT_FAILURE);
+        }
+        else
+            printf("%s %s\n", host, port);
     }
         
     /* prepare struct pollfd with stdin and socket for incoming data */
@@ -294,54 +229,44 @@ int main (int argc, char *argv [])
         {
             CHECK(nlus = read(STDIN_FILENO, msg, SIZE));
             msg[strcspn(msg,"\n")] = '\0';
-#if FILEIO
-            if(isTXT(msg))
+
+            if(strcmp(msg,FILEIO) == 0)
+            {
+                CHECK(sendto(sockfd,msg,nlus,0, (struct sockaddr *) &ss, addrlen));
+                printf("What file would you like to send?\n");
+                CHECK(nlus = read(STDIN_FILENO, msg, SIZE));
+                msg[strcspn(msg,"\n")] = '\0';
                 sendFile(msg,sockfd,ss);
+            }
             else
             {
                 CHECK(sendto(sockfd,msg,nlus,0, (struct sockaddr *) &ss, addrlen));
                 if(strcmp(msg,STOP) == 0)
                     break;
             }
-#elif USR
-            for (size_t i = 0; i < N-1; i++)
-                rValue = sendto(sockfd,msg,nlus,0,(struct sockaddr *) &cs[i],sizeof(cs[i]));
-            if(rValue == -1)
-                CHECK(sendto(sockfd,msg,nlus,0,(struct sockaddr *) &ss,addrlen));
-            if(strcmp(msg,STOP) == 0)
-                break;           
-#else
-            CHECK(sendto(sockfd,msg,nlus,0, (struct sockaddr *) &ss, addrlen));
-            if(strcmp(msg,STOP) == 0)
-                break;
-#endif
         }
         
         if(pfd[1].revents & POLLIN)
         {
             CHECK(nlus = recvfrom(sockfd,msg,SIZE,0,(struct sockaddr *) &ss, &addrlen));
             msg[nlus] = '\0';
-#if FILEIO
-            if(isTXT(msg))
-                receiveFile(msg,sockfd,ss);
+
+            if(strcmp(msg,FILEIO) == 0)
+            {
+                printf("File incoming...\n");
+                CHECK(nlus = recvfrom(sockfd,msg,SIZE,0,(struct sockaddr *) &ss, &addrlen));
+                msg[nlus] = '\0';
+                if(strcmp(msg,ERROR) == 0)
+                    printf("Something went wrong on sender's part.\n");
+                else
+                    receiveFile(msg,sockfd,ss);
+            }
             else
             {
                 if(strcmp(msg,STOP) == 0)
                     break;
                 printf("%s\n", msg);
             }
-#elif USR
-            for (size_t i = 0; i < N-1; i++)
-                if (memcmp(&cs[i], &ss, sizeof(struct sockaddr_storage)) != 0)
-                    sendto(sockfd,msg,nlus,0,(struct sockaddr *) &cs[i],sizeof(cs[i]));
-            if(strcmp(msg,STOP) == 0)
-                break;
-            printf("%s\n", msg);
-#else
-            if(strcmp(msg,STOP) == 0)
-                break;
-            printf("%s\n", msg);
-#endif
         }
     }
     
