@@ -12,12 +12,12 @@ echo -n "test 02 - program with invalid port number: "
 $PROG 65001 > /dev/null 2>&1 && echo "KO -> exit status $? instead of 1" && exit 1 
 echo ".....OK"
 
-echo -n "test 03 - program accept /HELO and /QUIT cmd: "
+echo -n "test 03 - program accept 1 and 0 cmd: "
 timeout 5 $PROG $PORT > /dev/null 2>&1 &
 TO=$!
 sleep 2
-echo -n "/HELO" | nc -6u -w1 localhost $PORT
-echo -n "/QUIT" | nc -6u -w1 localhost $PORT
+echo -n "1" | nc -6u -w1 localhost $PORT
+echo -n "0" | nc -6u -w1 localhost $PORT
 wait $TO
 R=$?
 [ "$R" == "124" ] && echo "KO -> program times out"           && exit 1
@@ -25,7 +25,7 @@ R=$?
 echo "...OK"
 
 echo -n "test 04 - program in client mode: "
-echo -n "/QUIT" > cmd.tmp
+echo -n "0" > cmd.tmp
 timeout 5 nc -6ul ::1 $PORT > output & 
 TO=$!
 sleep 2
@@ -35,15 +35,15 @@ R=$?
 [ "$R" != "0" ]   && echo "KO -> exit status $R instead of 0" && exit 1
 wait $TO
 MES=`cat output`
-[ "$MES" != "/HELO/QUIT" ] && echo "KO -> program sent $MES instead /HELO/QUIT" && exit 1
+[ "$MES" != "10" ] && echo "KO -> program sent $MES instead 10" && exit 1
 echo "...............OK"
 
 echo -n "test 05 - program accept IPv4 clients: "
 timeout 5 $PROG $PORT > output 2> /dev/null &
 TO=$!
 sleep 2
-echo -n "/HELO" | nc -4u -w1 localhost $PORT -p $PORT_C
-echo -n "/QUIT" | nc -4u -w1 localhost $PORT -p $PORT_C
+echo -n "1" | nc -4u -w1 localhost $PORT -p $PORT_C
+echo -n "0" | nc -4u -w1 localhost $PORT -p $PORT_C
 wait $TO
 R=$?
 [ "$R" == "124" ] && echo "KO -> program times out"           && exit 1
@@ -65,8 +65,8 @@ P=`which valgrind`
 valgrind --leak-check=full --error-exitcode=100 --log-file=valgrind.log $PROG $PORT > /dev/null &
 V=$!
 sleep 3
-echo -n "/HELO" | nc -4u -w1 localhost $PORT
-echo -n "/QUIT" | nc -4u -w1 localhost $PORT
+echo -n "1" | nc -4u -w1 localhost $PORT
+echo -n "0" | nc -4u -w1 localhost $PORT
 wait $V
 [ "$?" == "100" ] && echo "KO -> memory pb please check file valgrind.log" && exit 1
 rm valgrind.log
